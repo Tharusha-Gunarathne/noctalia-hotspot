@@ -26,6 +26,7 @@ local status = {
   revision = 0,
   ssid = "",
   secured = false,
+  defaultSsid = "",
   apInterface = "",
   staInterface = "",
   channel = 0,
@@ -93,6 +94,7 @@ local function applySnapshot(snapshot)
   status.active = snapshot.active == true
   status.ssid = snapshot.ssid or ""
   status.secured = snapshot.secured == true
+  status.defaultSsid = snapshot.default_ssid or ""
   status.apInterface = snapshot.ap_interface or ""
   status.staInterface = snapshot.sta_interface or ""
   status.channel = tonumber(snapshot.channel) or 0

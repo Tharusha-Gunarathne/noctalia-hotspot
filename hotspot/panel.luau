@@ -11,6 +11,7 @@ local status = noctalia.state.get("hotspot_status") or {
   busy = false,
   available = true,
   secured = false,
+  defaultSsid = "",
   clients = {},
   clientCount = 0,
   uplink = { connected = false, ssid = "", channel = 0 },
@@ -30,11 +31,46 @@ local revealed = ""
 local revealing = false
 local showActivePassword = false
 
+-- Seeded once per open from hotspot-secret --default, so the form shows the
+-- credentials a plain start would actually use instead of empty boxes.
+local defaultsLoaded = false
+local formKeySeq = 0
+
+-- ui.input is uncontrolled: `value` seeds the field once and the host owns the
+-- text afterwards. Bumping the key is the documented way to reseed it, which is
+-- what makes an async prefill land in a field that already rendered empty.
+local function reseedForm()
+  formKeySeq += 1
+end
+
 local function resetForm()
   formSsid = noctalia.string.trim(noctalia.getConfig("ssid") or "")
-  formPassword = ""
+  if formSsid == "" then
+    formSsid = noctalia.string.trim(status.defaultSsid or "")
+  end
+  formPassword = tostring(noctalia.getConfig("password") or "")
   formOpen = noctalia.getConfig("open_network") == true
   showFormPassword = false
+  reseedForm()
+end
+
+-- Pulls the .env.local password so the field is prefilled rather than blank.
+-- One privileged call per panel open, never on the status poll.
+local function loadDefaults()
+  if defaultsLoaded then return end
+  defaultsLoaded = true
+  if formPassword ~= "" then return end
+
+  noctalia.runAsync({ "sudo", "-n", "hotspot-secret", "--default" }, function(result)
+    if result.exitCode == 0 then
+      local value = noctalia.string.trim(result.stdout or "")
+      if value ~= "" and formPassword == "" then
+        formPassword = value
+        reseedForm()
+        if opened then render() end
+      end
+    end
+  end, 10000)
 end
 
 local function clearSecret()
@@ -186,7 +222,7 @@ local function configCard()
   local children = {
     ui.label({ text = noctalia.tr("panel.config.title"), fontSize = 11, color = "on_surface_variant" }),
     ui.input({
-      key = "ssid-input",
+      key = "ssid-input-" .. tostring(formKeySeq),
       value = formSsid,
       placeholder = noctalia.tr("panel.config.ssid_placeholder"),
       controlSize = "sm",
@@ -198,7 +234,7 @@ local function configCard()
   if not formOpen then
     table.insert(children, ui.row({ gap = 6, align = "center" }, {
       ui.input({
-        key = "password-input",
+        key = "password-input-" .. tostring(formKeySeq),
         value = formPassword,
         placeholder = noctalia.tr("panel.config.password_placeholder"),
         controlSize = "sm",
@@ -226,6 +262,32 @@ local function configCard()
   return ui.column({ gap = 8, padding = 12, fill = "surface_variant/0.35", radius = 10 }, children)
 end
 
+local kicking = {}
+
+-- Deauthenticates one client. hostapd keeps no ban list here, so a device can
+-- reconnect; this ends the current session rather than blocking the device.
+function kickClient(mac)
+  if mac == nil or mac == "" or kicking[mac] then return end
+  kicking[mac] = true
+  render()
+
+  local started = noctalia.runAsync({ "sudo", "-n", "hotspot-kick", mac }, function(result)
+    kicking[mac] = nil
+    if result.exitCode ~= 0 then
+      local detail = noctalia.string.trim(result.stderr or "")
+      if detail == "" then detail = noctalia.tr("panel.clients.kick_failed") end
+      noctalia.notifyError(noctalia.tr("title"), detail)
+    end
+    sendCommand("refresh")
+    if opened then render() end
+  end, 10000)
+
+  if not started then
+    kicking[mac] = nil
+    render()
+  end
+end
+
 local function clientRow(client)
   local subtitle = client.mac
   if client.ip ~= nil and client.ip ~= "" then
@@ -236,8 +298,10 @@ local function clientRow(client)
     trailing = ui.label({ text = tostring(client.signal) .. " dBm", fontSize = 11, color = "on_surface_variant" })
   end
 
+  local mac = tostring(client.mac)
+
   return ui.row({
-    key = "client-" .. tostring(client.mac),
+    key = "client-" .. mac,
     align = "center", gap = 10, paddingH = 14, paddingV = 10,
     fill = "surface_variant/0.35", radius = 10,
   }, {
@@ -250,6 +314,17 @@ local function clientRow(client)
       ui.label({ text = subtitle, fontSize = 11, color = "on_surface_variant", maxLines = 1 }),
     }),
     trailing,
+    ui.button({
+      key = "kick-" .. mac,
+      glyph = kicking[mac] and "loader-2" or "user-x",
+      variant = "ghost",
+      controlSize = "sm",
+      tooltip = noctalia.tr("panel.clients.kick"),
+      enabled = not kicking[mac],
+      -- A closure captures which row it belongs to, per the docs' guidance
+      -- for keyed lists.
+      onClick = function() kickClient(mac) end,
+    }),
   })
 end
 
@@ -339,6 +414,10 @@ noctalia.state.watch("hotspot_status", function(value)
   if type(value) ~= "table" then return end
   local wasActive = status.active
   status = value
+  if formSsid == "" and type(status.defaultSsid) == "string" then
+    formSsid = status.defaultSsid
+    reseedForm()
+  end
   -- Session credentials and any revealed key die with the session.
   if wasActive == true and status.active ~= true then
     clearSecret()
@@ -351,7 +430,9 @@ function onOpen(_context)
   opened = true
   status = noctalia.state.get("hotspot_status") or status
   clearSecret()
+  defaultsLoaded = false
   resetForm()
+  loadDefaults()
   sendCommand("refresh")
   render()
 end
@@ -380,7 +461,9 @@ end
 
 function onToggleFormPassword()
   showFormPassword = not showFormPassword
-  formPassword = formPassword
+  -- The masked and unmasked field are the same control with a different
+  -- `password` prop; reseed so the current text survives the flip.
+  reseedForm()
   render()
 end
 

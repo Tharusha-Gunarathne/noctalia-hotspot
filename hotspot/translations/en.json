@@ -29,6 +29,10 @@
       "stop": "Stop hotspot",
       "stopping": "Stopping…"
     },
+    "clients": {
+      "kick": "Disconnect this device",
+      "kick_failed": "Could not disconnect the device."
+    },
     "clients_inactive": "Start the hotspot to see connected devices here.",
     "clients_title": "Connected devices",
     "close": "Close",
