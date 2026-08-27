@@ -7,7 +7,7 @@ license = "MIT"
 icon = "router"
 description = "Start and stop the declarative NixOS AP+STA hotspot from the bar or Control Center, with uplink status, connected device list and IPC control."
 tags = ["network", "bar", "panel", "service", "shortcut", "utility", "system", "indicator"]
-dependencies = ["hotspot-status", "start-hotspot", "stop-hotspot"]
+dependencies = ["hotspot-status", "start-hotspot", "stop-hotspot", "hotspot-secret"]
 
 [[setting]]
 key = "ssid"
@@ -68,7 +68,10 @@ entry = "shortcut.luau"
 id = "panel"
 entry = "panel.luau"
 width = 420
-height = 560
+height = 620
 placement = "attached"
+# The panel holds a password field, so a misclick must not discard what the
+# user typed. Escape and the Close button still dismiss it.
+dismiss_on_outside_click = false
 position = "top_right"
 open_near_click = true

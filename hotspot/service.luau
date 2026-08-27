@@ -2,10 +2,9 @@
 --
 -- Background service for the NixOS AP+STA hotspot.
 --
--- All state is derived from `hotspot-status --json`, which is provided by
--- modules/features/services/hotspot.nix. Mutations go through
--- `sudo -n start-hotspot` / `sudo -n stop-hotspot`, which the same module
--- authorises NOPASSWD for this user.
+-- State comes from `hotspot-status --json`, which is read-only and
+-- unprivileged. Mutations go through `sudo -n`, authorised NOPASSWD by
+-- modules/features/services/hotspot.nix.
 
 local STATUS_KEY = "hotspot_status"
 local COMMAND_KEY = "hotspot_command"
@@ -26,6 +25,7 @@ local status = {
   error = "",
   revision = 0,
   ssid = "",
+  secured = false,
   apInterface = "",
   staInterface = "",
   channel = 0,
@@ -36,7 +36,6 @@ local status = {
 }
 
 local refresh
-local setActive
 
 local function publish(errorMessage)
   revision += 1
@@ -52,8 +51,6 @@ local function shellQuote(value)
   return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
 end
 
--- noctalia.notify() cannot carry a custom icon yet, so route through the
--- host notification IPC the same way the reference plugin does.
 local function showNotification(title, body, icon, urgency)
   local payload = noctalia.json.encode({
     app_name = noctalia.tr("title"),
@@ -70,7 +67,6 @@ local function showNotification(title, body, icon, urgency)
     end
     return
   end
-
   noctalia.runAsync("noctalia msg notification-show " .. shellQuote(payload))
 end
 
@@ -93,10 +89,10 @@ local function apInterface()
   return iface
 end
 
--- Reads `hotspot-status --json` and folds it into `status`.
 local function applySnapshot(snapshot)
   status.active = snapshot.active == true
   status.ssid = snapshot.ssid or ""
+  status.secured = snapshot.secured == true
   status.apInterface = snapshot.ap_interface or ""
   status.staInterface = snapshot.sta_interface or ""
   status.channel = tonumber(snapshot.channel) or 0
@@ -123,7 +119,6 @@ local function applySnapshot(snapshot)
       })
     end
   end
-
   table.sort(clients, function(left, right)
     if left.ip ~= right.ip then
       if left.ip == "" then return false end
@@ -132,7 +127,6 @@ local function applySnapshot(snapshot)
     end
     return left.mac < right.mac
   end)
-
   status.clients = clients
 end
 
@@ -159,7 +153,6 @@ refresh = function(callback)
     if callback then callback(status.active) end
     return
   end
-
   refreshing = true
 
   runArgv({ "hotspot-status", "--json", "--ap", apInterface() }, function(result)
@@ -181,9 +174,18 @@ refresh = function(callback)
     end
 
     applySnapshot(snapshot)
-    publish(snapshot.error ~= nil and snapshot.error ~= "" and snapshot.error or "")
+    publish("")
     completeRefresh(callback, status.active)
   end, 10000)
+end
+
+local function friendlyError(detail)
+  if detail:find("password is required") ~= nil or detail:find("sudo:") ~= nil then
+    return noctalia.tr("error.sudo_denied")
+  elseif detail:find("No password configured") ~= nil then
+    return noctalia.tr("error.no_password")
+  end
+  return detail
 end
 
 local function finishToggle(expectedActive, result)
@@ -192,12 +194,7 @@ local function finishToggle(expectedActive, result)
     local detail = noctalia.string.trim(result.stderr or "")
     if detail == "" then detail = noctalia.string.trim(result.stdout or "") end
     if detail == "" then detail = noctalia.tr("error.command_failed") end
-    -- sudo -n fails loudly rather than prompting; make that actionable.
-    if detail:find("password is required") ~= nil or detail:find("sudo:") ~= nil then
-      detail = noctalia.tr("error.sudo_denied")
-    elseif detail:find("No password configured") ~= nil then
-      detail = noctalia.tr("error.no_password")
-    end
+    detail = friendlyError(detail)
     publish(detail)
     showNotification(noctalia.tr("title"), detail, "alert-circle", "critical")
     refresh()
@@ -231,24 +228,41 @@ local function finishToggle(expectedActive, result)
   end)
 end
 
--- Builds the argv for start-hotspot. Empty ssid/password mean "use the
--- values baked in from .env.local", which is the recommended setup: the
--- password then never reaches Noctalia's config or a process command line.
-local function buildStartArgv()
+-- Resolution order for credentials, most specific first:
+--   1. the panel's session fields (this start only)
+--   2. the plugin's persistent settings
+--   3. omitted entirely -> start-hotspot falls back to .env.local
+-- Nothing is remembered between starts, which is what makes the panel values
+-- "session only": stopping simply drops them.
+local function buildStartArgv(overrides)
   local argv = { "sudo", "-n", "start-hotspot" }
+  overrides = type(overrides) == "table" and overrides or {}
 
-  local ssid = noctalia.string.trim(noctalia.getConfig("ssid") or "")
+  local ssid = noctalia.string.trim(overrides.ssid or "")
+  if ssid == "" then
+    ssid = noctalia.string.trim(noctalia.getConfig("ssid") or "")
+  end
   if ssid ~= "" then
+    if #ssid > 32 then
+      return nil, noctalia.tr("error.ssid_too_long")
+    end
     table.insert(argv, "-id")
     table.insert(argv, ssid)
   end
 
-  if noctalia.getConfig("open_network") == true then
+  local open = overrides.open
+  if open == nil then
+    open = noctalia.getConfig("open_network") == true
+  end
+  if open == true then
     table.insert(argv, "-nopw")
     return argv, nil
   end
 
-  local password = tostring(noctalia.getConfig("password") or "")
+  local password = tostring(overrides.password or "")
+  if password == "" then
+    password = tostring(noctalia.getConfig("password") or "")
+  end
   if password ~= "" then
     if #password < 8 then
       return nil, noctalia.tr("error.password_too_short")
@@ -260,17 +274,18 @@ local function buildStartArgv()
   return argv, nil
 end
 
-local function startHotspot()
-  -- The AP piggybacks the STA's channel, so an uplink is a hard requirement.
+local function startHotspot(overrides)
   if status.uplink == nil or status.uplink.connected ~= true then
     busy = false
-    local message = noctalia.tr("error.no_uplink", { interface = status.staInterface ~= "" and status.staInterface or "?" })
+    local message = noctalia.tr("error.no_uplink", {
+      interface = status.staInterface ~= "" and status.staInterface or "?",
+    })
     publish(message)
     showNotification(noctalia.tr("title"), message, "alert-circle", "critical")
     return
   end
 
-  local argv, err = buildStartArgv()
+  local argv, err = buildStartArgv(overrides)
   if argv == nil then
     busy = false
     publish(err)
@@ -289,14 +304,12 @@ local function stopHotspot()
   end, 30000)
 end
 
-setActive = function(nextActive)
+local function setActive(nextActive, overrides)
   if busy or not available then return end
-
   busy = true
   publish("")
-
   if nextActive then
-    startHotspot()
+    startHotspot(overrides)
   else
     stopHotspot()
   end
@@ -311,11 +324,12 @@ local function resetHotspot()
   end, 30000)
 end
 
-local function handleCommand(action)
+local function handleCommand(command)
+  local action = command.action
   if action == "toggle" then
-    setActive(not status.active)
+    setActive(not status.active, command)
   elseif action == "enable" then
-    setActive(true)
+    setActive(true, command)
   elseif action == "disable" then
     setActive(false)
   elseif action == "reset" then
@@ -327,7 +341,7 @@ end
 
 noctalia.state.watch(COMMAND_KEY, function(command)
   if type(command) ~= "table" or type(command.action) ~= "string" then return end
-  handleCommand(command.action)
+  handleCommand(command)
 end)
 
 publish(available and "" or noctalia.tr("error.missing_dependencies"))
@@ -346,5 +360,5 @@ function onConfigChanged()
 end
 
 function onIpc(event, _payload)
-  handleCommand(event)
+  handleCommand({ action = event })
 end
