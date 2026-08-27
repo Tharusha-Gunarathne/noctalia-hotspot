@@ -1,0 +1,95 @@
+{
+  "error": {
+    "command_failed": "The hotspot command failed.",
+    "command_start": "Noctalia could not start the hotspot command.",
+    "missing_dependencies": "start-hotspot, stop-hotspot and hotspot-status must be on PATH. Rebuild with the hotspot module enabled.",
+    "no_password": "No password is set. Add one under [hotspot] in .env.local, set a password override in the plugin settings, or enable “Open network” to start without encryption.",
+    "no_uplink": "{interface} is not connected to Wi-Fi. The access point borrows its channel, so connect first.",
+    "password_too_short": "The hotspot password must be at least 8 characters.",
+    "state_mismatch": "The requested hotspot state could not be confirmed.",
+    "status_failed": "hotspot-status could not be read.",
+    "status_parse": "hotspot-status returned output Noctalia could not parse.",
+    "sudo_denied": "Passwordless sudo for start-hotspot is not configured. Check the sudo rules in hotspot.nix."
+  },
+  "notification": {
+    "disabled": {
+      "body": "The access point has been shut down. Your Wi-Fi connection is untouched.",
+      "title": "Hotspot disabled"
+    },
+    "enabled": {
+      "body": "Clients can connect to {ssid} on channel {channel}.",
+      "title": "Hotspot enabled"
+    }
+  },
+  "panel": {
+    "action": {
+      "start": "Start hotspot",
+      "starting": "Starting…",
+      "stop": "Stop hotspot",
+      "stopping": "Stopping…"
+    },
+    "clients_inactive": "Start the hotspot to see connected devices here.",
+    "clients_title": "Connected devices",
+    "close": "Close",
+    "configure": "Plugin settings",
+    "gateway": "Gateway: {address}",
+    "no_clients": "No device is connected right now.",
+    "refresh": "Refresh",
+    "reset": "Reset the AP interface",
+    "status": {
+      "active_message": "{ssid} is broadcasting on {interface}, channel {channel}.",
+      "active_title": "Hotspot active",
+      "error_title": "Unavailable",
+      "inactive_message": "Start the hotspot to share this connection with nearby devices.",
+      "inactive_title": "Hotspot off",
+      "no_uplink_message": "{interface} is not connected. The access point borrows its channel, so connect to Wi-Fi first.",
+      "no_uplink_title": "No uplink",
+      "starting_message": "Bringing up the access point and DHCP…",
+      "starting_title": "Starting",
+      "stopping_message": "Shutting down the access point…",
+      "stopping_title": "Stopping"
+    },
+    "uplink": {
+      "connected": "{ssid} on {interface}, channel {channel}",
+      "disconnected": "{interface} is not connected",
+      "title": "Uplink"
+    }
+  },
+  "settings": {
+    "ap_interface": {
+      "description": "Virtual access point interface created on the Wi-Fi radio. Matches apIface in hotspot.nix.",
+      "label": "AP interface"
+    },
+    "glyph": {
+      "label": "Bar glyph"
+    },
+    "open_network": {
+      "description": "Start an open network with no password. Overrides the password field.",
+      "label": "Open network"
+    },
+    "password": {
+      "description": "Leave empty to use the password from .env.local — recommended, since a value here is stored in Noctalia's config and appears in the process list. Minimum 8 characters.",
+      "label": "Password override"
+    },
+    "refresh_interval": {
+      "description": "How often the service re-reads hotspot status and the connected device list, in seconds.",
+      "label": "Refresh interval"
+    },
+    "ssid": {
+      "description": "Leave empty to use the network name from .env.local.",
+      "label": "Network name override"
+    }
+  },
+  "shortcut": {
+    "active": "Hotspot on",
+    "inactive": "Hotspot off"
+  },
+  "title": "Hotspot",
+  "tooltip": {
+    "active": "{ssid} is active on channel {channel} · {count} device(s) connected · click for panel · right-click to stop",
+    "changing": "Changing hotspot state…",
+    "inactive": "Hotspot is off · click for panel · right-click to start",
+    "no_uplink": "Hotspot is off · no Wi-Fi uplink to borrow a channel from",
+    "unavailable": "The hotspot CLI tools are not available"
+  }
+}

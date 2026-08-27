@@ -1,0 +1,74 @@
+id = "tharusha-gunarathne/hotspot"
+name = "Hotspot"
+version = "1.0.0"
+plugin_api = 24
+author = "tharusha-gunarathne"
+license = "MIT"
+icon = "router"
+description = "Start and stop the declarative NixOS AP+STA hotspot from the bar or Control Center, with uplink status, connected device list and IPC control."
+tags = ["network", "bar", "panel", "service", "shortcut", "utility", "system", "indicator"]
+dependencies = ["hotspot-status", "start-hotspot", "stop-hotspot"]
+
+[[setting]]
+key = "ssid"
+type = "string"
+label_key = "settings.ssid.label"
+description_key = "settings.ssid.description"
+default = ""
+
+[[setting]]
+key = "password"
+type = "string"
+label_key = "settings.password.label"
+description_key = "settings.password.description"
+default = ""
+
+[[setting]]
+key = "open_network"
+type = "bool"
+label_key = "settings.open_network.label"
+description_key = "settings.open_network.description"
+default = false
+
+[[setting]]
+key = "ap_interface"
+type = "string"
+label_key = "settings.ap_interface.label"
+description_key = "settings.ap_interface.description"
+default = "ap0"
+
+[[setting]]
+key = "refresh_interval"
+type = "int"
+label_key = "settings.refresh_interval.label"
+description_key = "settings.refresh_interval.description"
+default = 5
+min = 2
+max = 60
+
+[[service]]
+id = "hotspot"
+entry = "service.luau"
+
+[[widget]]
+id = "toggle"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  default = "router"
+
+[[shortcut]]
+id = "cc-toggle"
+entry = "shortcut.luau"
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 420
+height = 560
+placement = "attached"
+position = "top_right"
+open_near_click = true
