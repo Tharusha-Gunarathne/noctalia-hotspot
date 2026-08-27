@@ -72,3 +72,7 @@ height = 620
 placement = "attached"
 position = "top_right"
 open_near_click = true
+# Stated explicitly rather than left to the default: an earlier build shipped
+# this as false, and a stale manifest keeps the old value until Noctalia
+# reloads its config. Writing it out makes the intent unambiguous.
+dismiss_on_outside_click = true

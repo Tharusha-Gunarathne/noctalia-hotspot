@@ -31,7 +31,7 @@ local function render()
     barWidget.setTooltip(noctalia.tr("tooltip.changing"))
   elseif status.active == true then
     barWidget.setGlyph(glyph)
-    barWidget.setGlyphColor("tertiary")
+    barWidget.setGlyphColor("primary")
     local count = status.clientCount or #(status.clients or {})
     barWidget.setText(count > 0 and tostring(count) or "")
     barWidget.setTooltip(noctalia.tr("tooltip.active", {

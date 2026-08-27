@@ -112,7 +112,7 @@ local function phaseDetails()
     return noctalia.tr("panel.status.active_title"), noctalia.tr("panel.status.active_message", {
       interface = status.apInterface ~= "" and status.apInterface or "?",
       channel = tostring(status.channel or 0),
-    }), "tertiary", "router"
+    }), "primary", "router"
   end
 
   if not uplinkConnected() then
@@ -162,7 +162,7 @@ end
 local function activeNetworkCard()
   local rows = {
     ui.row({ align = "center", gap = 8 }, {
-      ui.glyph({ name = "wifi", size = 15, color = "tertiary" }),
+      ui.glyph({ name = "wifi", size = 15, color = "primary" }),
       ui.column({ gap = 2, flexGrow = 1 }, {
         ui.label({ text = noctalia.tr("panel.network.name"), fontSize = 11, color = "on_surface_variant" }),
         ui.label({ text = status.ssid ~= "" and status.ssid or "?", fontWeight = "medium", maxLines = 1 }),
